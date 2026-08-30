@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ahpu_odom_nav</name>
+  <version>1.0.0</version>
+  <description>惯导(纯陀螺)+轮式里程计的 teach-and-repeat 定点巡航：录制一条轨迹，之后厘米级复现。不依赖 GPS / SLAM / 地图 / Nav2。</description>
+  <maintainer email="198358184+aixuexidexiaoshuai@users.noreply.github.com">Alex</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <!-- 外部依赖：IMU 姿态滤波（必须 use_mag:=false）与 EKF 融合 -->
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

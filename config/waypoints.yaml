@@ -1,0 +1,91 @@
+# ============================================================================
+#  轨迹跟踪参数模板（odom_waypoint_follower）
+# ============================================================================
+#  这个文件有两个用途：
+#    ① waypoint_capture 录制时的【模板】—— 录完只替换 waypoints_x/y/yaw 三个数组，
+#       其余控制参数原样继承，所以把车调好的参数写在这里，新录的路径直接就是调好的。
+#    ② 直接当参数文件跑（默认的两点直线只是占位，实际请用录制生成的 _smooth.yaml）。
+#
+#  ⚠️ 坐标系：所有航点都在 odom_combined 系 —— 【开机点 = 原点，开机车头向 = +X 轴】。
+#     所以录制与回放必须在【同一发车点、同一朝向】开机，两次坐标系才重合。
+#  ⚠️ 开机后 3 秒内车必须静止（陀螺零偏标定期）。
+#  ⚠️ 改本文件后【重启 launch 即生效，无需重新编译】（前提是传的是源文件绝对路径，
+#     或已把 install 里的 yaml 软链回源码）。
+# ============================================================================
+odom_waypoint_follower:
+  ros__parameters:
+
+    # ===== 轨迹（由 waypoint_capture + smooth_path 生成，此处为占位）=====
+    # X / Y：米，odom_combined 系，两列等长一一对应。
+    waypoints_x:   [0.000, 1.000]
+    waypoints_y:   [0.000, 0.000]
+    # 每点的【录制车头朝向】(度)：作 Stanley 的航向参考，同时决定该点是不是倒车段
+    #   （录制车头 yaw 与运动切线相反 = 当时在倒车 → 回放也倒着走）。
+    #   999（= no_heading_value）= 该点无 yaw，用相邻点切线推算。
+    waypoints_yaw: [0.00, 0.00]
+    no_heading_value: 999.0
+
+    # ===== 车辆 / 下位机转向契约 =====
+    # ⚠️ 本节点发出的 angular.z 是【角速度 ω】，由下位机按 R = Vx/Vz 反解阿克曼转角。
+    #    若你的底盘把 angular.z 当【前轮转角】读，改 _omega_for_delta（见 README）。
+    wheelbase: 0.143            # 轴距 m
+    # 前轮转角上限，左右【可以不对称】（本车实测左 0.320rad=18.3°、右 0.4461rad=25.6°，
+    #   来自固件限幅 + 舵机 PWM 上限）。按自己的车实测填：打死方向量转弯半径 R，δ=atan(L/R)。
+    steer_max_left_rad: 0.3200
+    steer_max_right_rad: 0.4461
+    # 下位机 ω→转角 换算用的固件常数（让 follower 反解出的 ω 能让固件算回期望的 δ）
+    fw_axle_spacing: 0.144
+    fw_half_wheelspacing: 0.081
+    fw_min_turn_radius: 0.350
+
+    # ===== Stanley 控制律 =====
+    #   δ = heading_gain·he + atan2(−k·e, ks+v) + curv_ff·atan(L·κ)
+    stanley_k: 1.2              # 横向误差增益【主调钮】。大→纠偏狠/收敛快；过大→发抖画龙。
+    stanley_ks: 0.4             # 软化项 m/s：分母 ks+v 让纠偏力度随速度自适应，低速不过冲。一般不动。
+    heading_gain: 1.0           # 航向误差权重。大→车头更快对齐路径；过大与横向项打架发抖。
+    # 曲率前馈：弯道提前打舵，补反馈的滞后（不加的话弯道会明显滞后、走大弯）。
+    #   1.0 = 纯运动学 atan(L·κ)；超出部分补偿舵机/控制延迟（延迟距离 ∝ 速度）。
+    #   1.4 是 @0.6m/s 实车标定值。0 = 关（退回纯反馈）。
+    curv_ff_gain: 1.4
+    curv_ff_adaptive: false     # true: gain = 1.0 + curv_ff_speed_k × linear_speed（换速度免重标）
+    curv_ff_speed_k: 0.667      # 0.667 使 0.6m/s → 1.40，与定值等价
+    curv_kappa_baseline: 0.15   # 算 κ 的三点外接圆弧长基线 m。太短→贴噪声；太长→抹平圆角。
+    # 单调前向最近点搜索窗口（点数）。两条边界：
+    #   下限 > 每个控制周期走过的点数 = v /(control_rate × 点间距)，否则进度跟不上车；
+    #   上限 < 路径折返处的索引跨度，否则会在掉头处从去程腿跳到回程腿。
+    #   （2cm 点距、0.2m/s、50Hz → 每周期 0.2 点，8 很宽裕。）
+    progress_window: 8
+
+    # ===== 转角平滑 / 限幅 =====
+    delta_rate_max: 3.0         # δ 斜率限幅 rad/s，0=关。治高速极限环：只砍突变、不引入滞后。
+    alpha_delta: 1.0            # δ 一阶低通系数 0<α≤1。1.0=不滤波；高速直线摆动可调 0.3~0.5。
+
+    # ===== 速度规划 =====
+    linear_speed: 0.20          # 巡航标称线速度 m/s（过弯/末端会在此基础上减速）
+    min_speed: 0.05             # 速度下限 m/s（各种减速的地板）
+    turn_slowdown: 0.6          # 过弯减速强度 0~1：转角越大越慢（打到上限时降到 1−此值 倍）
+    end_slow_dist: 0.30         # 末端减速起始距离 m（离终点 < 此开始线性降速，贴准）
+    end_slow_speed: 0.0         # 末端减速【封顶】速度 m/s：高速跑时设 0.3~0.4 让它刹得住；
+                                #   ≤0 或 ≥linear_speed 时退化为从 linear_speed 线性降（低速就用这个）
+    accel_max: 1.5              # 线加速度斜率限幅 m/s²，0=关。【只限加速不限减速】，消速度突跳。
+    control_rate: 50.0          # 控制频率 Hz。⚠️ 必须 ≤ EKF 的 frequency，否则拿到陈旧位姿。
+
+    # ===== 忠实倒车 =====
+    # 录制里有后退段（如三点掉头）→ 回放那段倒着走贴轨迹。每点是否倒车由 waypoints_yaw
+    #   与运动切线的夹角自动判定，无需在此逐点设置。
+    dir_switch_sec: 0.5         # 前↔后换向先停稳的时长 s（阿克曼换向必须先停车）
+    reverse_max_speed: 0.12     # 倒车段线速度上限 m/s（后方无传感器 = 盲区，慢且稳）
+    reverse_steer_sign: -1.0    # 倒车转向符号。本车实测 -1.0；换底盘请实车验证（倒车打反就翻符号）
+
+    # ===== 终点判定 =====
+    final_tolerance: 0.04       # 终点到达半径 m（4cm）
+    final_yaw_tol_deg: -1.0     # 终点航向容差(度)：>0 时位置到达【且】车头对齐才算到；-1=不约束
+    final_overshoot_max: 0.20   # 航向门迟迟不满足时最多再前冲多少 m，超过则兜底停+告警
+    final_stuck_sec: 2.0        # 终点区(<10cm)卡住超过此秒数强制停（防撞板空转烧电机）
+
+    # ===== 发车门控 / 话题 =====
+    wait_start: false           # true=启动后待命，等 /odom_nav/start 收到 True 才发车
+    start_topic: /odom_nav/start
+    odom_topic: /odom_combined  # 输入位姿（EKF 输出）
+    cmd_vel_topic: /cmd_vel     # 输出速度指令
+    debug_topic: /odom_nav/debug  # 调参用 Float32MultiArray；留空关闭
